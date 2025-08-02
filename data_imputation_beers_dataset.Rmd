@@ -2,7 +2,7 @@
 title: "Data imputation on Kaggle's Craft Beers Dataset"
 author: "Daniel Navarro"
 date: "2025-08-02"
-output: html_document
+output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
@@ -79,7 +79,6 @@ summary(beers_completed_normal_dist)
 ```
 
 ```{r compare distributions after imputation with normal distribution}
-par(mfrow = c(2, 2))
 densityplot(original_beers$abv)
 densityplot(beers_completed_normal_dist$abv)
 densityplot(original_beers$ibu)
@@ -92,7 +91,7 @@ Although the data is now satisfactory, for the sake of practice and curiosity we
 
 # Data imputation with estochastic regression
 
-```{r completion with estochastic regression, warning=FALSE, include=FALSE}
+```{r completion with estochastic regression, warning=FALSE}
 beers_completed_estochastic_regression <- original_beers
 imp_normal <- mice(beers_completed_estochastic_regression, method = 'norm.predict', m = 1, maxit = 1)
 beers_completed_estochastic_regression <- complete(imp_normal)
@@ -100,7 +99,6 @@ summary(beers_completed_estochastic_regression)
 ```
 
 ```{r compare distributions after imputation with estochastic regression}
-par(mfrow = c(2, 2))
 densityplot(original_beers$abv)
 densityplot(beers_completed_estochastic_regression$abv)
 densityplot(original_beers$ibu)
@@ -111,7 +109,7 @@ And we obtained a rather more coherent completed data, in comparison with the or
 
 # Some exploratory data analysis
 
-To check the states with the more breweries in the US by the year of the data.
+To check the states with the more breweries in the US in the year of the data.
 
 ```{r Check breweries by state}
 original_breweries |> group_by(state) |> summarise(breweries = n()) |> arrange(desc(breweries)) |> slice_head(n = 10)
@@ -123,7 +121,7 @@ What about the cities with more breweries?
 original_breweries |> group_by(state, city) |> summarise(breweries = n()) |> arrange(desc(breweries))
 ```
 
-Let's check the beer's tastes preference in the state.
+Let's check the beer's tastes preference in the States.
 
 ```{r Check beers styles}
 total_styles <- length(beers_completed_estochastic_regression$style)
