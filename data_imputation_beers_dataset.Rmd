@@ -1,0 +1,140 @@
+---
+title: "Data imputation on Kaggle's Craft Beers Dataset"
+author: "Daniel Navarro"
+date: "2025-08-02"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries, message=FALSE, include=FALSE}
+if (!require(mice)) install.packages('mice', type = 'binary')
+if (!require(lattice)) install.packages('lattice')
+if (!require(tidyverse)) install.packages('tidyverse')
+```
+
+```{r data load and copy, include=FALSE}
+original_beers <- read.csv('./data/beers.csv')
+original_breweries <- read.csv('./data/breweries.csv')
+```
+
+
+# Goal
+
+In order to check Multivariate Imputation by Chained Equations we take the Craft Beers Dataset from Kaggle <https://www.kaggle.com/datasets/nickhould/craft-cans/data> with contains two datasets with `r nrow(original_beers)` different beers dataset and `r nrow(original_breweries)` in the dataset of breweries from  the USA.
+
+Datasets are incomplete, lacking `r sum(is.na(original_beers))` data points distributed in different fields of the beers and `r sum(is.na(original_breweries))` of the breweries.
+
+We cannot afford to discard `r sum(is.na(original_beers))` rows out of a total of `r nrow(original_beers)` and must find a way to impute this data, but, how is the missing data distributed?
+
+The datasets are described a continuation with abv meaning alcoholic content by volume, ibu is international bittering units, the rest of variables are self explained:
+
+```{r describe original data}
+summary(original_beers)
+summary(original_breweries)
+```
+
+# Data Imputation
+
+We will check how are missing datapoints distributed between fields in the beers dataset.
+
+```{r missing datapoints pattern}
+md.pattern(original_beers)
+```
+Only abv and ibu variables present missing values, with 943 rows missing only in ibu and 62 rows missing two variables, abv and ibu.
+
+# Simple data imputation with the mean
+
+This is the very common practice of filling missing data points with the mean of the existing values.
+
+```{r first imputation, warning=FALSE}
+beers_completed_mean <- original_beers
+imp_mean <- mice(beers_completed_mean, method = 'mean', m = 1, maxit = 1)
+beers_completed_mean <- complete(imp_mean)
+summary(beers_completed_mean)
+```
+
+After a first imputation of the missing data points, using only average we have completed all the missing data in all variables.
+
+After comparing the densities of both variables, pre and post imputations using the mean, abv is still consistent with the original set, however ibu has been over centered. This is the effect of using the average on almost half of the data for ibu variable, so the mean is not a balanced way to input this data.
+
+```{r compare distributions after imputation by means}
+densityplot(original_beers$abv)
+densityplot(beers_completed_mean$abv)
+densityplot(original_beers$ibu)
+densityplot(beers_completed_mean$ibu)
+```
+
+Will test another method of imputation:
+
+# Data imputation with normal distribution
+
+```{r completion with normal distribucion, warning=FALSE, include=FALSE}
+beers_completed_normal_dist <- original_beers
+imp_normal <- mice(beers_completed_normal_dist, method = 'norm.predict', m = 1, maxit = 1)
+beers_completed_normal_dist <- complete(imp_normal)
+summary(beers_completed_normal_dist)
+```
+
+```{r compare distributions after imputation with normal distribution}
+par(mfrow = c(2, 2))
+densityplot(original_beers$abv)
+densityplot(beers_completed_normal_dist$abv)
+densityplot(original_beers$ibu)
+densityplot(beers_completed_normal_dist$ibu)
+```
+
+We obtained a completed data set with a distribution coherent with the original data.
+
+Although the data is now satisfactory, for the sake of practice and curiosity we can try other method, this time:
+
+# Data imputation with estochastic regression
+
+```{r completion with estochastic regression, warning=FALSE, include=FALSE}
+beers_completed_estochastic_regression <- original_beers
+imp_normal <- mice(beers_completed_estochastic_regression, method = 'norm.predict', m = 1, maxit = 1)
+beers_completed_estochastic_regression <- complete(imp_normal)
+summary(beers_completed_estochastic_regression)
+```
+
+```{r compare distributions after imputation with estochastic regression}
+par(mfrow = c(2, 2))
+densityplot(original_beers$abv)
+densityplot(beers_completed_estochastic_regression$abv)
+densityplot(original_beers$ibu)
+densityplot(beers_completed_estochastic_regression$ibu)
+```
+
+And we obtained a rather more coherent completed data, in comparison with the original data.
+
+# Some exploratory data analysis
+
+To check the states with the more breweries in the US by the year of the data.
+
+```{r Check breweries by state}
+original_breweries |> group_by(state) |> summarise(breweries = n()) |> arrange(desc(breweries)) |> slice_head(n = 10)
+```
+
+What about the cities with more breweries?
+
+```{r Check breweries by city}
+original_breweries |> group_by(state, city) |> summarise(breweries = n()) |> arrange(desc(breweries))
+```
+
+Let's check the beer's tastes preference in the state.
+
+```{r Check beers styles}
+total_styles <- length(beers_completed_estochastic_regression$style)
+beers_completed_estochastic_regression |> group_by(style) |> summarise(Quantity = n(), Percentage = Quantity / total_styles * 100) |> arrange(desc(Quantity)) |> slice_head(n = 9)
+```
+
+```{r Top 15 beer styles}
+beers_completed_estochastic_regression |> group_by(style) |> summarise(Quantity = n()) |> arrange(desc(Quantity)) |> slice_head(n = 9) |> ggplot(aes(Quantity, style, colour = style, fill = style)) + 
+  geom_col(orientation = 'y') +
+  theme(legend.position = 'none') +
+  ggtitle('Prefered beer styles in the USA') +
+  geom_text(aes(label = Quantity), colour = 'black')
+```
+
