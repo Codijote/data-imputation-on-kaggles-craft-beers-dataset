@@ -1,0 +1,142 @@
+---
+title: "Imputación de datos faltantes en base de datos de cervecerías"
+author: "Daniel Navarro"
+date: "2025-08-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries, message=FALSE, include=FALSE}
+if (!require(mice)) install.packages('mice', type = 'binary')
+if (!require(lattice)) install.packages('lattice')
+if (!require(tidyverse)) install.packages('tidyverse')
+```
+
+```{r data load and copy, include=FALSE}
+original_beers <- read.csv('./data/beers.csv')
+original_breweries <- read.csv('./data/breweries.csv')
+```
+
+
+# Objetivo
+
+Para revisar una imputación de variables múltiples con equaciones en cadena tomamos una base de datos de Kaggle <https://www.kaggle.com/datasets/nickhould/craft-cans/data> que contiene dos bases de datos con `r nrow(original_beers)` diferentes cervezas y `r nrow(original_breweries)` en la base de datos de fabricantes en los Estados Unidos.
+
+Las bases de datos están incompletas, faltan `r sum(is.na(original_beers))` datos distribuidos en diferentes campos de las cervezas y `r sum(is.na(original_breweries))` en los de fabricantes.
+
+No se puede asumir descartar `r sum(is.na(original_beers))` lineas de un total de `r nrow(original_beers)` y se debe imputar estos datos, pero, ¿Cómo están distribuidos los datos faltantes?
+
+Se describe a continuación las bases de datos, abv es el contenido de alcohol por volumen, ibu es la unidad internacional de sabor amargo, el resto de las variables están bien identificadas:
+
+
+```{r describe original data}
+summary(original_beers)
+summary(original_breweries)
+```
+
+# Imputación de datos
+
+Revisamos cómo están distribuidos los datos faltantes en la base de datos de cervezas, beers.
+
+```{r missing datapoints pattern}
+md.pattern(original_beers)
+```
+
+Solo faltan datos en las variables abv e ibu, 943 líneas carecen solo de ibu y 62 de ambas variables, abv e ibu.
+
+# Imputación simple utilizando la media
+
+Esta es la práctica común de usar la media de los datos existentes en los datos faltantes.
+
+```{r first imputation, warning=FALSE}
+beers_completed_mean <- original_beers
+imp_mean <- mice(beers_completed_mean, method = 'mean', m = 1, maxit = 1)
+beers_completed_mean <- complete(imp_mean)
+summary(beers_completed_mean)
+```
+Al completar los datos faltantes con la media, se ha completado en una acción todos los datos faltantes en la base de datos.
+
+Al comparar las densidades de ambas variables, antes y después de imputar los datos con la media, abv es consistente con los datos originales, sin embargo ibu está demasiado centrada. Este es un efecto del uso del promedio en casi la mitad de todas las líneas de la variable ibu, así que la media no es una forma balanceada de completar estos datos.
+
+```{r compare distributions after imputation by means}
+densityplot(original_beers$abv)
+densityplot(beers_completed_mean$abv)
+densityplot(original_beers$ibu)
+densityplot(beers_completed_mean$ibu)
+```
+
+Probaremos otro método de imputación:
+
+# Imputación de datos con distribución normal
+
+```{r completion with normal distribucion, warning=FALSE, include=FALSE}
+beers_completed_normal_dist <- original_beers
+imp_normal <- mice(beers_completed_normal_dist, method = 'norm.predict', m = 1, maxit = 1)
+beers_completed_normal_dist <- complete(imp_normal)
+summary(beers_completed_normal_dist)
+```
+
+```{r compare distributions after imputation with normal distribution}
+densityplot(original_beers$abv)
+densityplot(beers_completed_normal_dist$abv)
+densityplot(original_beers$ibu)
+densityplot(beers_completed_normal_dist$ibu)
+```
+
+Ahora obtenemos datos completados con una distribución coherente con los datos originales.
+
+Sin embargo, para satisfacer la curiosidad y por práctica podemos probar otro método, esta vez:
+
+# Imputación de datos con regresión estocástica
+
+```{r completion with estochastic regression, warning=FALSE}
+beers_completed_estochastic_regression <- original_beers
+imp_normal <- mice(beers_completed_estochastic_regression, method = 'norm.predict', m = 1, maxit = 1)
+beers_completed_estochastic_regression <- complete(imp_normal)
+summary(beers_completed_estochastic_regression)
+```
+
+```{r compare distributions after imputation with estochastic regression}
+densityplot(original_beers$abv)
+densityplot(beers_completed_estochastic_regression$abv)
+densityplot(original_beers$ibu)
+densityplot(beers_completed_estochastic_regression$ibu)
+```
+
+Y obtenemos unos datos mucho más coherentes al compararlos con los datos originales.
+
+# Análisis exploratorio de los datos
+
+Estados con más productores de cerveza en los Estados Unidos a la fecha de la base de datos.
+
+```{r Check breweries by state}
+original_breweries |> group_by(state) |> summarise(breweries = n()) |> arrange(desc(breweries)) |> slice_head(n = 10)
+```
+
+¿Qué hay de las ciudades con más productores de cerveza?
+
+```{r Check breweries by city}
+original_breweries |> group_by(state, city) |> summarise(breweries = n()) |> arrange(desc(breweries))
+```
+
+Veamos las cervezas preferidas en los Estados Unidos.
+
+```{r Check beers styles}
+total_styles <- length(beers_completed_estochastic_regression$style)
+beers_completed_estochastic_regression |> group_by(style) |> summarise(Quantity = n(), Percentage = Quantity / total_styles * 100) |> arrange(desc(Quantity)) |> slice_head(n = 9)
+```
+
+```{r Top 15 beer styles}
+beers_completed_estochastic_regression |> group_by(style) |> summarise(Quantity = n()) |> arrange(desc(Quantity)) |> slice_head(n = 9) |> ggplot(aes(Quantity, style, colour = style, fill = style)) + 
+  geom_col(orientation = 'y') +
+  theme(legend.position = 'none') +
+  ggtitle('Prefered beer styles in the USA') +
+  geom_text(aes(label = Quantity), colour = 'black') +
+  annotate('text', x = 350, y = 4, label = 'La cerveza preferida') +
+  annotate('text', x = 350, y = 3.5, label = 'en los Estados Unidos') +
+  annotate('text', x = 350, y = 3, label = 'es la American IPA')
+```
+
